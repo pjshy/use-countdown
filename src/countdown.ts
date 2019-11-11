@@ -16,11 +16,15 @@ interface CalcTimeDeltaOptions {
   controller?: boolean
 }
 
-function noop () {}
+function noop() {}
 
 export function calcTimeDelta(
   date: number | string | Date,
-  { offsetTime = 0, now = Date.now, controller = false }: CalcTimeDeltaOptions = {},
+  {
+    offsetTime = 0,
+    now = Date.now,
+    controller = false,
+  }: CalcTimeDeltaOptions = {}
 ): TimeDelta {
   let startTimestamp: number
 
@@ -32,7 +36,10 @@ export function calcTimeDelta(
     startTimestamp = date
   }
 
-  const total = Math.max(0, controller ? startTimestamp : startTimestamp + offsetTime - now())
+  const total = Math.max(
+    0,
+    controller ? startTimestamp : startTimestamp + offsetTime - now()
+  )
   const seconds = total / 1000
 
   return {
@@ -64,7 +71,13 @@ type Pause = () => void
  */
 export function useCountdown(
   date: number | string | Date,
-  { autoStart = true, controller = false, onStart = noop, onTick = noop, onComplete = noop }: CountdownOptions = {},
+  {
+    autoStart = true,
+    controller = false,
+    onStart = noop,
+    onTick = noop,
+    onComplete = noop,
+  }: CountdownOptions = {}
 ): [TimeDelta, Start, Pause] {
   let timer: number | null = null
   const initOffsetState = Date.now()
@@ -73,7 +86,7 @@ export function useCountdown(
   const initOffsetTime = 0
   const [offsetTime, setOffsetTime] = useState(initOffsetTime)
 
-  const initState = useMemo(() => getTimeDeleta(), [date])
+  const initState = useMemo(() => getTimeDeleta(), [getTimeDeleta])
   const [delta, setTimeDelta] = useState(initState)
 
   function getTimeDeleta() {
@@ -131,7 +144,7 @@ export function useCountdown(
     autoStart && start()
 
     return () => clearDelayTimer()
-  }, [autoStart])
+  }, [autoStart, clearDelayTimer, start])
 
   return [delta, start, pause]
 }
