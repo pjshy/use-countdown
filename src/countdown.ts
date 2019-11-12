@@ -1,61 +1,9 @@
-import { useState, useMemo, useLayoutEffect } from 'react'
+import { useState, useLayoutEffect, useRef, useCallback } from 'react'
 
-export interface TimeDelta {
-  total: number
-  milliseconds: number
-  seconds: number
-  minutes: number
-  hours: number
-  days: number
-  completed: boolean
-}
-
-interface CalcTimeDeltaOptions {
-  now?: () => number
-  offsetTime?: number
-  controller?: boolean
-}
-
-function noop() {}
-
-export function calcTimeDelta(
-  date: number | string | Date,
-  {
-    offsetTime = 0,
-    now = Date.now,
-    controller = false,
-  }: CalcTimeDeltaOptions = {}
-): TimeDelta {
-  let startTimestamp: number
-
-  if (typeof date === 'string') {
-    startTimestamp = new Date(date).getTime()
-  } else if (date instanceof Date) {
-    startTimestamp = date.getTime()
-  } else {
-    startTimestamp = date
-  }
-
-  const total = Math.max(
-    0,
-    controller ? startTimestamp : startTimestamp + offsetTime - now()
-  )
-  const seconds = total / 1000
-
-  return {
-    total,
-    milliseconds: Number(((seconds % 1) * 1000).toFixed()),
-    seconds: Math.floor(seconds % 60),
-    minutes: Math.floor((seconds / 60) % 60),
-    hours: Math.floor((seconds / 60 / 60) % 24),
-    days: Math.floor(seconds / 60 / 60 / 24),
-    completed: total <= 0,
-  }
-}
+import { calcTimeDelta, TimeDelta, noop } from './utils'
 
 export interface CountdownOptions {
   autoStart?: boolean
-  controller?: boolean
   onStart?: (delta: TimeDelta) => void
   onComplete?: (delta: TimeDelta) => void
   onTick?: (TimeDelta: TimeDelta) => void
@@ -63,6 +11,8 @@ export interface CountdownOptions {
 
 type Start = () => void
 type Pause = () => void
+
+const DELAY_TIME = 1000
 
 /**
  *
@@ -73,78 +23,73 @@ export function useCountdown(
   date: number | string | Date,
   {
     autoStart = true,
-    controller = false,
     onStart = noop,
     onTick = noop,
     onComplete = noop,
   }: CountdownOptions = {}
 ): [TimeDelta, Start, Pause] {
-  let timer: number | null = null
-  const initOffsetState = Date.now()
-  const [offsetStart, setOffsetStart] = useState(initOffsetState)
+  const timerRef = useRef<number | null>(null)
 
-  const initOffsetTime = 0
-  const [offsetTime, setOffsetTime] = useState(initOffsetTime)
+  const [isPlaying, setIsPlaying] = useState(autoStart)
 
-  const initState = useMemo(() => getTimeDeleta(), [getTimeDeleta])
-  const [delta, setTimeDelta] = useState(initState)
+  const [offsetStart, setOffsetStart] = useState(Date.now())
 
-  function getTimeDeleta() {
-    return calcTimeDelta(date, { offsetTime, controller })
-  }
+  const [offsetTime, setOffsetTime] = useState(0)
 
-  function createDelayTimer(timeDelta: TimeDelta) {
-    timer !== null && clearTimeout(timer)
+  const [timeDelta, setTimeDelta] = useState(calcTimeDelta(date))
 
-    const delayTime = 1 * 1000
+  const getTimeDeleta = useCallback(() => {
+    return calcTimeDelta(date, { offsetTime })
+  }, [date, offsetTime])
 
-    if (timeDelta.completed) {
-      onComplete(timeDelta)
-    } else {
-      timer = window.setTimeout(() => {
-        tick()
-      }, delayTime)
+  const clearDelayTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
     }
-  }
-
-  function clearDelayTimer() {
-    timer !== null && clearTimeout(timer)
-  }
-
-  function tick() {
-    const nextTimeDelta = getTimeDeleta()
-
-    setTimeDelta(nextTimeDelta)
-    createDelayTimer(nextTimeDelta)
-
-    if (!nextTimeDelta.completed) {
-      onTick(nextTimeDelta)
-    }
-  }
+  }, [])
 
   function start() {
     setOffsetTime(Date.now() - offsetStart)
 
-    const nextTimeDelta = getTimeDeleta()
-
-    setTimeDelta(nextTimeDelta)
-    createDelayTimer(nextTimeDelta)
-
-    onStart(nextTimeDelta)
+    setIsPlaying(true)
   }
 
   function pause() {
     setOffsetStart(Date.now())
 
-    clearDelayTimer()
+    setIsPlaying(false)
   }
 
   // https://github.com/facebook/react/issues/14050
   useLayoutEffect(() => {
-    autoStart && start()
+    if (isPlaying) {
+      onStart(timeDelta)
+      const tick = () => {
+        const nextTimeDelta = getTimeDeleta()
+        setTimeDelta(nextTimeDelta)
+        if (nextTimeDelta.completed) {
+          onComplete(nextTimeDelta)
+        } else {
+          onTick(nextTimeDelta)
+          window.setTimeout(() => tick(), DELAY_TIME)
+        }
+      }
 
-    return () => clearDelayTimer()
-  }, [autoStart, clearDelayTimer, start])
+      window.setTimeout(() => tick(), DELAY_TIME)
 
-  return [delta, start, pause]
+      return () => clearDelayTimer()
+    }
+    return
+  }, [
+    isPlaying,
+    getTimeDeleta,
+    onStart,
+    timeDelta,
+    onComplete,
+    onTick,
+    clearDelayTimer,
+  ])
+
+  return [timeDelta, start, pause]
 }
