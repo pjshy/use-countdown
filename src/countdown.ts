@@ -1,12 +1,18 @@
-import { useState, useLayoutEffect, useRef, useCallback } from 'react'
+import {
+  useState,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useEffect,
+} from 'react'
 
 import { calcTimeDelta, TimeDelta, noop } from './utils'
 
 export interface CountdownOptions {
   autoStart?: boolean
-  onStart?: (delta: TimeDelta) => void
-  onComplete?: (delta: TimeDelta) => void
-  onTick?: (TimeDelta: TimeDelta) => void
+  onStart?: () => void
+  onComplete?: () => void
+  onTick?: () => void
 }
 
 type Start = () => void
@@ -30,7 +36,7 @@ export function useCountdown(
 ): [TimeDelta, Start, Pause] {
   const timerRef = useRef<number | null>(null)
 
-  const [isPlaying, setIsPlaying] = useState(autoStart)
+  const [isPlaying, setIsPlaying] = useState(false)
 
   const [offsetStart, setOffsetStart] = useState(Date.now())
 
@@ -49,47 +55,44 @@ export function useCountdown(
     }
   }, [])
 
-  function start() {
-    setOffsetTime(Date.now() - offsetStart)
-
+  const start = useCallback(() => {
+    setOffsetTime(pre => Date.now() - offsetStart + pre)
     setIsPlaying(true)
-  }
+    onStart()
+  }, [offsetStart])
 
-  function pause() {
+  const pause = useCallback(() => {
     setOffsetStart(Date.now())
-
     setIsPlaying(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (autoStart) {
+      start()
+    }
+  }, [])
 
   // https://github.com/facebook/react/issues/14050
   useLayoutEffect(() => {
     if (isPlaying) {
-      onStart(timeDelta)
       const tick = () => {
         const nextTimeDelta = getTimeDeleta()
         setTimeDelta(nextTimeDelta)
         if (nextTimeDelta.completed) {
-          onComplete(nextTimeDelta)
+          onComplete()
+          setIsPlaying(false)
         } else {
-          onTick(nextTimeDelta)
-          window.setTimeout(() => tick(), DELAY_TIME)
+          onTick()
+          timerRef.current = window.setTimeout(() => tick(), DELAY_TIME)
         }
       }
 
-      window.setTimeout(() => tick(), DELAY_TIME)
+      timerRef.current = window.setTimeout(() => tick(), DELAY_TIME)
 
       return () => clearDelayTimer()
     }
     return
-  }, [
-    isPlaying,
-    getTimeDeleta,
-    onStart,
-    timeDelta,
-    onComplete,
-    onTick,
-    clearDelayTimer,
-  ])
+  }, [isPlaying, getTimeDeleta, onComplete, onTick])
 
   return [timeDelta, start, pause]
 }
