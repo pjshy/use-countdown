@@ -9,9 +9,9 @@ export const Countdown = () => {
   const { hours, minutes, seconds } = time
 
   return (
-    <div>
+    <div style={{ fontSize: '40px', textAlign: 'center' }}>
       {`${hours}:${minutes}:${seconds}`}
-      <div>
+      <div style={{ marginTop: '30px' }}>
         <button onClick={start}>start</button>
         <button onClick={pause}>pause</button>
       </div>
