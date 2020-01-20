@@ -1,6 +1,5 @@
 import {
   useState,
-  useLayoutEffect,
   useRef,
   useCallback,
   useEffect,
@@ -34,19 +33,21 @@ export function useCountdown(
     onComplete = noop,
   }: CountdownOptions = {}
 ): [TimeDelta, Start, Pause] {
+  const timestamp = Date.now()
+
   const timerRef = useRef<number | null>(null)
 
   const [isPlaying, setIsPlaying] = useState(false)
 
-  const [offsetStart, setOffsetStart] = useState(Date.now())
+  const [offsetStart, setOffsetStart] = useState(timestamp)
 
   const [offsetTime, setOffsetTime] = useState(0)
 
-  const [timeDelta, setTimeDelta] = useState(calcTimeDelta(date))
+  const [timeDelta, setTimeDelta] = useState(calcTimeDelta(date, { now: () => timestamp }))
 
   const getTimeDeleta = useCallback(() => {
-    return calcTimeDelta(date, { offsetTime })
-  }, [date, offsetTime])
+    return calcTimeDelta(date, { offsetTime, now: () => timestamp })
+  }, [date, offsetTime, timestamp])
 
   const clearDelayTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -56,15 +57,26 @@ export function useCountdown(
   }, [])
 
   const start = useCallback(() => {
-    setOffsetTime(pre => Date.now() - offsetStart + pre)
-    setIsPlaying(true)
-    onStart()
-  }, [offsetStart])
+    if (!isPlaying) {
+      setOffsetTime(pre => timestamp - offsetStart + pre)
+      setIsPlaying(true)
+      onStart()
+    }
+  }, [offsetStart, isPlaying, timestamp])
 
   const pause = useCallback(() => {
-    setOffsetStart(Date.now())
-    setIsPlaying(false)
-  }, [])
+    if (isPlaying) {
+      setOffsetStart(timestamp)
+      setIsPlaying(false)
+    }
+  }, [isPlaying, timestamp])
+
+  const tick = useCallback(() => {
+    const nextTimeDelta = getTimeDeleta()
+
+    setTimeDelta(nextTimeDelta)
+    nextTimeDelta.completed && setIsPlaying(false)
+  }, [getTimeDeleta])
 
   useEffect(() => {
     if (autoStart) {
@@ -72,27 +84,18 @@ export function useCountdown(
     }
   }, [])
 
-  // https://github.com/facebook/react/issues/14050
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (isPlaying) {
-      const tick = () => {
-        const nextTimeDelta = getTimeDeleta()
-        setTimeDelta(nextTimeDelta)
-        if (nextTimeDelta.completed) {
-          onComplete()
-          setIsPlaying(false)
-        } else {
-          onTick()
-          timerRef.current = window.setTimeout(() => tick(), DELAY_TIME)
-        }
+      if (timeDelta.completed) {
+        onComplete()
+      } else {
+        onTick()
+        timerRef.current = window.setTimeout(() => tick(), DELAY_TIME)
       }
-
-      timerRef.current = window.setTimeout(() => tick(), DELAY_TIME)
-
       return () => clearDelayTimer()
     }
     return
-  }, [isPlaying, getTimeDeleta, onComplete, onTick])
+  }, [isPlaying, timeDelta])
 
   return [timeDelta, start, pause]
 }
